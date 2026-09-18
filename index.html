@@ -138,6 +138,13 @@ body[data-lang="en"] .word bdi,body[data-lang="en"] .q-word bdi,body[data-lang="
 .wx{padding:0 16px 12px}
 .wx .ex{margin-top:0;padding-top:10px}
 .note{font-size:14px;color:var(--muted)}
+.say{background:none;border:0;font-size:22px;line-height:1;padding:4px 6px;opacity:.8;vertical-align:middle}
+.say:hover{opacity:1}
+.say.sm{font-size:17px;padding:2px 4px}
+.wrowwrap{display:flex;align-items:center}
+.wrowwrap .wrow{flex:1;min-width:0}
+.wrowwrap .say{flex:none;margin-left:8px}
+.word .say{font-size:24px;margin-right:6px}
 .choices{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}
 .choice{background:var(--surface);border:2px solid var(--line);border-radius:12px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.2}
 .choice b{font-size:26px}.choice span{font-size:14px}.choice small{font-size:13px;color:var(--muted)}
@@ -259,6 +266,7 @@ function makeQ(id,review){
 }
 function startTest(){
   const d=S.day;
+  if(d.stage==="done"&&d.date===todayStr())d.stage="learn";
   if(!d.reviewIds)d.reviewIds=Object.keys(S.review).map(Number).filter(id=>!d.ids.includes(id)).sort((a,b)=>S.review[a]-S.review[b]).slice(0,REVIEW_MAX);
   d.attempts.push({items:shuffle(d.ids.map(id=>makeQ(id,false)).concat(d.reviewIds.map(id=>makeQ(id,true)))),idx:0});
   d.stage="test";save();
@@ -272,7 +280,9 @@ function finishDay(){
   });
   const done=d.attempts.filter(a=>a.score), ls=done.length?done[done.length-1].score:null;
   d.score=ls;d.stage="done";
-  S.history.push({n:d.n,date:d.date,ids:d.ids,correct:ls?ls.correct:null,total:ls?ls.total:null,tries:done.length});
+  const row={n:d.n,date:d.date,ids:d.ids,correct:ls?ls.correct:null,total:ls?ls.total:null,tries:done.length};
+  const k=S.history.findIndex(h=>h.n===d.n);
+  if(k>=0)S.history[k]=row;else S.history.push(row);
   save();
 }
 
@@ -309,17 +319,24 @@ function nextQ(ctx){
     }
     save();go("wresult");return;
   }
-  S.day.stage="learn";
-  if(correct===z.items.length)finishDay();else save();
+  S.day.stage="learn";save();
   go("result");
 }
 
 /* ---------- pieces ---------- */
-function wordTitle(id){return `<p class="word"><span><bdi>${esc(W[id][0])}</bdi></span></p>`;}
+const CANSAY=typeof window!=="undefined"&&"speechSynthesis" in window;
+function say(text,lang){
+  if(!CANSAY)return;
+  try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=lang||(L==="en"?"en-US":"he-IL");u.rate=0.9;
+    const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.toLowerCase().startsWith(u.lang.slice(0,2)));if(v)u.voice=v;
+    speechSynthesis.speak(u);}catch(e){}
+}
+const sayBtn=(text,cls)=>CANSAY?`<button class="say ${cls||""}" data-a="say" data-text="${esc(text)}" aria-label="להשמיע את המילה" title="להשמיע">\u{1F50A}</button>`:"";
+function wordTitle(id){return `<p class="word"><span><bdi>${esc(W[id][0])}</bdi></span>${sayBtn(W[id][0])}</p>`;}
 function defsHtml(id){const d=W[id][1];return d.length>1?`<ol class="defs">${d.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:`<ul class="defs single"><li>${esc(d[0])}</li></ul>`;}
 function exHtml(id){
   const e=W[id][2];if(!e||!e.length)return "";
-  if(L==="en")return `<div class="ex"><h3>${LANG.en.exTitle}</h3><p class="en" dir="ltr">${esc(e[0])}</p><p class="tr">${esc(e[1]||"")}</p></div>`;
+  if(L==="en")return `<div class="ex"><h3>${LANG.en.exTitle}</h3><p class="en" dir="ltr">${esc(e[0])} ${sayBtn(e[0],"sm")}</p><p class="tr">${esc(e[1]||"")}</p></div>`;
   return `<div class="ex"><h3>${LANG.he.exTitle}</h3>${e.map(x=>`<p>${esc(x)}</p>`).join("")}</div>`;
 }
 const topBar=(left,right="")=>`<div class="top">${left}<span>${right}</span></div>`;
@@ -369,8 +386,10 @@ function home(){
       <button class="btn" data-a="start">להתחיל את הסבב של היום</button>`;
     }
   }else if(S.day.stage==="done"){
-    main=`<h1>סיימת להיום</h1><p class="muted">${S.day.score?`בניסיון האחרון ענית נכון על ${S.day.score.correct} מתוך ${S.day.score.total}. `:""}הסבב הבא ייפתח מחר.</p>
-    <div class="row"><button class="btn" data-a="learn">לעבור שוב על מילות היום</button></div>`;
+    const today=S.day.date===todayStr();
+    main=`<h1>${today?"סיימת את הסבב של היום":"סיימת להיום"}</h1><p class="muted">${S.day.score?`בניסיון האחרון ענית נכון על ${S.day.score.correct} מתוך ${S.day.score.total}. `:""}${today?"אפשר להמשיך לתרגל היום כמה שרוצים. הסבב הבא ייפתח מחר.":"הסבב הבא ייפתח מחר."}</p>
+    <div class="row"><button class="btn" data-a="learn">לעבור שוב על מילות היום</button></div>
+    ${today?`<div class="row"><button class="btn ghost" data-a="test">לעשות שוב את המבחן</button><button class="btn ghost" data-a="flash" data-deck="today">כרטיסיות</button></div>`:""}`;
   }else{
     const d=S.day,done=d.attempts.filter(a=>a.score),ls=done.length?done[done.length-1].score:null;
     const st=d.stage==="test"?`המבחן באמצע, שאלה ${cur("day").idx+1} מתוך ${cur("day").items.length}.`
@@ -394,27 +413,28 @@ function home(){
     ${confirmReset?`<div>למחוק את כל ההתקדמות ב${L==="he"?"עברית":"אנגלית"} ולהתחיל מאפס?</div><div class="confirm"><button class="danger" data-a="reset-yes">כן, למחוק</button><button data-a="reset-no">ביטול</button></div>`:`<button data-a="reset">איפוס ההתקדמות בשפה הזאת</button>`}
   </div>`;
 }
+const canTest=d=>d&&d.date===todayStr();
 function learn(){
   const d=S.day,n=d.ids.length,i=Math.min(d.learnIdx,n-1),id=d.ids[i];
   return `${topBar(homeLink,`מילה <b>${i+1}</b> מתוך ${n} · <button class="link" data-a="daylist">כל המילים</button>`)}
   <div class="dots" aria-hidden="true">${d.ids.map((_,k)=>`<i class="${k===i?"on":""}"></i>`).join("")}</div>
   <article class="card">${wordTitle(id)}${defsHtml(id)}${exHtml(id)}</article>
   <div class="row"><button class="btn ghost" data-a="prev">הקודמת</button><button class="btn ghost" data-a="next">${i===n-1?"מההתחלה":"הבאה"}</button></div>
-  ${d.stage!=="done"?`<div class="row"><button class="btn" data-a="test">${d.attempts.some(a=>a.score)?"לנסות שוב את המבחן":"אני מוכן למבחן"}</button></div>`:""}`;
+  ${canTest(d)?`<div class="row"><button class="btn" data-a="test">${d.attempts.some(a=>a.score)?"לעשות שוב את המבחן":"אני מוכן למבחן"}</button></div>`:""}`;
 }
 function daylist(){
   const d=S.day;
   return `${topBar(`<button class="link" data-a="learn">חזרה לכרטיסים</button>`,`יום <b>${d.n}</b>`)}
   <h1>מילות היום</h1>
-  <ul class="wl">${d.ids.map((id,k)=>`<li><button class="wrow" data-a="card" data-k="${k}"><span class="mw"><bdi>${esc(W[id][0])}</bdi></span><span class="wd">${esc(W[id][1].join("; "))}</span></button></li>`).join("")}</ul>
-  ${d.stage!=="done"?`<div class="row"><button class="btn" data-a="test">למבחן</button></div>`:""}`;
+  <ul class="wl">${d.ids.map((id,k)=>`<li><div class="wrowwrap"><button class="wrow" data-a="card" data-k="${k}"><span class="mw"><bdi>${esc(W[id][0])}</bdi></span><span class="wd">${esc(W[id][1].join("; "))}</span></button>${sayBtn(W[id][0],"sm")}</div></li>`).join("")}</ul>
+  ${canTest(d)?`<div class="row"><button class="btn" data-a="test">למבחן</button></div>`:""}`;
 }
 function quiz(ctx){
   const z=cur(ctx),q=z.items[z.idx],done=q.pick!==null,ok=q.pick===q.id;
   const prompt=q.type==="w2d"?`<p class="q-kind">${LANG[L].qW2D}</p><p class="q-word"><bdi>${esc(W[q.id][0])}</bdi></p>`:`<p class="q-kind">${LANG[L].qD2W}</p><p class="q-def">${esc(cleanDefs(q.id))}</p>`;
   const opts=q.opts.map(o=>{let c="opt"+(q.type==="d2w"?" w":"");if(done&&o===q.id)c+=" right";else if(done&&o===q.pick)c+=" wrong";
     return `<button class="${c}" data-a="pick" data-ctx="${ctx}" data-id="${o}" ${done?"disabled":""}><bdi>${esc(label(o,q.type))}</bdi></button>`;}).join("");
-  const fb=done?`<div class="fb ${ok?"ok":"no"}"><strong>${ok?"נכון":"לא נכון"}</strong><span class="mw"><bdi>${esc(W[q.id][0])}</bdi></span>: ${esc(W[q.id][1].join("; "))}</div>
+  const fb=done?`<div class="fb ${ok?"ok":"no"}"><strong>${ok?"נכון":"לא נכון"}</strong><span class="mw"><bdi>${esc(W[q.id][0])}</bdi></span>${sayBtn(W[q.id][0],"sm")}: ${esc(W[q.id][1].join("; "))}</div>
     <div class="row"><button class="btn" data-a="nextq" data-ctx="${ctx}">${z.idx===z.items.length-1?"לתוצאות":"לשאלה הבאה"}</button></div>`:"";
   const k=ctxObj(ctx).attempts.length;
   return `${topBar(homeLink,`${ctx==="weekly"?"מבחן שבועי · ":""}ניסיון ${k} · שאלה <b>${z.idx+1}</b> מתוך ${z.items.length}`)}
@@ -427,10 +447,11 @@ function result(){
   const perfect=z.score.correct===z.score.total;
   let body;
   if(d.stage==="done"){
-    body=`<p class="muted">${perfect?"כל התשובות נכונות. כל המילים נוספו למילים שאתה יודע.":"סיימת את היום. מילים שלא ענית עליהן נכון בניסיון האחרון יופיעו במבחן של מחר."}</p>
-    <div class="row"><button class="btn" data-a="home">לדף הבית</button></div>`;
+    body=`<p class="muted">${perfect?"כל התשובות נכונות. כל המילים נוספו למילים שאתה יודע.":"מילים שלא ענית עליהן נכון בניסיון האחרון יופיעו במבחן של מחר."}</p>
+    ${canTest(d)?`<div class="row"><button class="btn" data-a="test">לעשות שוב את המבחן</button></div>`:""}
+    <div class="row"><button class="btn ghost" data-a="home">לדף הבית</button></div>`;
   }else{
-    body=`<p class="muted">אפשר לחזור על המילים ולנסות שוב כמה פעמים שרוצים. מה שקובע הוא הניסיון האחרון: מילים שלא תדע עד סוף היום יעברו למבחן של מחר.</p>
+    body=`<p class="muted">${perfect?"כל התשובות נכונות! אפשר להמשיך לתרגל כמה שרוצים. ":""}אפשר לחזור על המילים ולעשות את המבחן שוב כמה פעמים שרוצים. מה שקובע הוא הניסיון האחרון: מילים שלא תדע עד סוף היום יעברו למבחן של מחר.</p>
     <div class="row"><button class="btn" data-a="test">לנסות שוב</button></div>
     <div class="row"><button class="btn ghost" data-a="learn">לחזור על המילים</button><button class="btn ghost" data-a="flash" data-deck="today">כרטיסיות</button></div>
     <div class="row"><button class="btn ghost" data-a="finish">לסיים להיום</button></div>`;
@@ -481,7 +502,7 @@ function wordItems(){
   let ids=Object.keys(src).map(Number).sort((a,b)=>src[b]-src[a]||W[a][0].localeCompare(W[b][0]));
   if(q)ids=ids.filter(id=>norm(W[id][0]).includes(q)||norm(W[id][1].join(" ")).includes(q));
   if(!ids.length)return `<p class="muted">${q?"לא נמצאו מילים.":wordsTab==="mastered"?"עוד אין כאן מילים. מילים שתענה עליהן נכון במבחן יופיעו כאן.":"אין מילים לחזרה כרגע."}</p>`;
-  return `<ul class="wl">${ids.map(id=>`<li><button class="wrow" data-a="wopen" data-id="${id}" aria-expanded="${openWord===id}"><span class="mw"><bdi>${esc(W[id][0])}</bdi></span><span class="wd">${esc(W[id][1].join("; "))}</span></button>${openWord===id?`<div class="wx">${exHtml(id)}</div>`:""}</li>`).join("")}</ul>`;
+  return `<ul class="wl">${ids.map(id=>`<li><div class="wrowwrap"><button class="wrow" data-a="wopen" data-id="${id}" aria-expanded="${openWord===id}"><span class="mw"><bdi>${esc(W[id][0])}</bdi></span><span class="wd">${esc(W[id][1].join("; "))}</span></button>${sayBtn(W[id][0],"sm")}</div>${openWord===id?`<div class="wx">${exHtml(id)}</div>`:""}</li>`).join("")}</ul>`;
 }
 function words(){
   return `${topBar(homeLink)}<h1>המילים שלי</h1>
@@ -495,12 +516,12 @@ function howto(){
   <h1>איך זה עובד</h1>
   <ol class="howto">
     <li>בכל יום מקבלים ${S.perDay} מילים חדשות, ${L==="en"?"עם התרגום לעברית ומשפט לדוגמה באנגלית עם תרגום":"עם הגדרות ומשפטים לדוגמה"}.</li>
-    <li>אפשר לעבור על המילים ועל הכרטיסיות כמה שרוצים, ולגשת למבחן היומי כמה פעמים שרוצים.</li>
+    <li>אפשר לעבור על המילים ועל הכרטיסיות כמה שרוצים, ולעשות את המבחן היומי כמה פעמים שרוצים, גם אחרי שענית נכון על הכול.</li>
     <li>בכל מבחן יומי יש גם עד ${REVIEW_MAX} מילים לחזרה מימים קודמים.</li>
     <li>מילה שעונים עליה נכון בניסיון האחרון נכנסת לרשימת "יודע". מילה שלא ידעת עד סוף היום עוברת למבחן של מחר.</li>
     <li>בכל שבת, לפני המילים החדשות, יש מבחן שבועי של עד ${WEEKLY_SIZE} מילים מהשבוע שעבר. צריך 80% כדי להמשיך, ואפשר לנסות שוב עד שעוברים. אם לא נכנסת בשבת, המבחן יחכה לך בפעם הבאה.</li>
     <li>סבב חדש נפתח כל יום, וסבב שלא סיימת לא נערם.</li>
-    <li>ההתקדמות נשמרת בטלפון הזה, לכל משתמש ולכל שפה בנפרד.</li>
+    <li>ליד כל מילה יש כפתור 🔊 להשמעת ההגייה.</li>\n    <li>ההתקדמות נשמרת בטלפון הזה, לכל משתמש ולכל שפה בנפרד.</li>
   </ol>
   <div class="row"><button class="btn" data-a="howto-ok">${back?"חזרה לדף הבית":"הבנתי, בוא נתחיל"}</button></div>`;
 }
@@ -553,7 +574,7 @@ $app.addEventListener("click",e=>{
     case "card":d.learnIdx=Number(b.dataset.k);save();go("learn");break;
     case "next":d.learnIdx=(d.learnIdx+1)%d.ids.length;save();render();break;
     case "prev":d.learnIdx=(d.learnIdx-1+d.ids.length)%d.ids.length;save();render();break;
-    case "test":if(d&&d.stage!=="done"){startTest();go("quiz");}break;
+    case "test":if(canTest(d)){startTest();go("quiz");}break;
     case "pick":answer(b.dataset.ctx,Number(b.dataset.id));break;
     case "nextq":nextQ(b.dataset.ctx);break;
     case "finish":if(d&&d.stage!=="done")finishDay();go("result");break;
@@ -561,6 +582,7 @@ $app.addEventListener("click",e=>{
     case "wresume":go("wquiz");break;
     case "flash":openFlash(b.dataset.deck);break;
     case "deck":flash={deck:b.dataset.deck,ids:deckIds(b.dataset.deck),i:0,flipped:false};render();break;
+    case "say":say(b.dataset.text);break;
     case "flip":flash.flipped=!flash.flipped;render();break;
     case "fnext":if(flash.ids.length){flash.i=(flash.i+1)%flash.ids.length;flash.flipped=false;render();}break;
     case "fprev":if(flash.ids.length){flash.i=(flash.i-1+flash.ids.length)%flash.ids.length;flash.flipped=false;render();}break;
